@@ -40,6 +40,7 @@ RIGHT_VIEWPORT_MARGIN = 840
 BOTTOM_VIEWPORT_MARGIN = 100
 TOP_VIEWPORT_MARGIN = 620
 
+WORLD_LENGTH = 10000
 
 class startView(arcade.View):
     def __init__(self):
@@ -116,6 +117,7 @@ class gameView(arcade.View):
         self.wall_list = None
         self.player_list = None
         self.background_element_list = None
+        self.game_element_list = None
         
         #Need a seperate list for our character sprite
         self.player_sprite = None
@@ -143,8 +145,20 @@ class gameView(arcade.View):
         self.total_time = 600.0
         self.elapsed_time = 0.0
 
+        #Make clock follow player (these values do not necessarily matter as the position ends up basing off player position)
         self.clock_center_x = -400
         self.clock_center_y = 272
+        #We create the same thing as for the clock, for the interaction menu to follow the player
+        self.int1_center_x = 1600
+        self.int1_center_y = 650
+
+        #Define all the ranges of distances that the character must be in to interact with an object
+        #We also create a bool to allow character to interact with objects, only sets to true when in range 
+        self.intPrompt = "" #The text to display that corresponds to the object to be interacted with
+        
+        self.inInteractRange_Sign = False #Sign Bool
+        self.sign_low_x = 900 #Sign distance range
+        self.sign_high_x = 1300
 
     def play_song(self):
         """ Play the song. """
@@ -171,9 +185,10 @@ class gameView(arcade.View):
         self.fish_list = arcade.SpriteList(use_spatial_hash=True) # Passing the use_spatial_hash helps optimize collision detection for objects that spend a lot of time immobile
         self.wall_list = arcade.SpriteList(use_spatial_hash=True) # We don't pass it for our character since he will need to move a lot 
         self.background_element_list = arcade.SpriteList(use_spatial_hash=True)
+        self.game_element_list = arcade.SpriteList(use_spatial_hash=True)
 
         #Setting up our player sprite, and defining its starting coordinates
-        img = "./resources/Penguin/penguin_walk_1_128.png"
+        img = "./resources/test_sprite.png"
         self.player_sprite = arcade.Sprite(img, 1) # Param 2 defines scaling size 
         self.player_sprite.center_x = 64
         self.player_sprite.center_y = 128
@@ -181,14 +196,15 @@ class gameView(arcade.View):
 
 
         #For loop to place floors
-        #These floors are just placeholders until real hitboxes are set
-        x = -1024
-        for i in range(1, 25):
-            wall = arcade.Sprite("./resources/test_floor.png", 0.5)
+        #IMPORTANT: The floor level is y=56 
+        #To place items on the floor, you do [item].center_y = (imgheight / 2) + 56
+        x = -1048
+        for i in range(1, (WORLD_LENGTH // 262)):
+            wall = arcade.Sprite("./resources/backgrounds/floor2.png", 1)
             wall.center_x = x
-            wall.center_y = 32
+            wall.center_y = -75
             self.wall_list.append(wall)
-            x += 256 #This is the exact value to respect to the lengths of our floors
+            x += 262 #This is the exact value to respect to the lengths of our floors, as they are 420*262
 
         # We can use a coordinate list to place our blocks at multiple specific positions:
         block_location_list = [
@@ -210,18 +226,18 @@ class gameView(arcade.View):
         # WE create 2 variables for the x range that our cloud will be placed in
         #This preserves the randonness but makes sure our clouds have somewhat consistent distances between eachother, avoiding disparities/empty patches
         next_cloud_low = -800
-        next_cloud_high = -575
+        next_cloud_high = -625
         
-        for i in range (1, 25):
+        for i in range (1, (WORLD_LENGTH // 175)):
             # Loop to randomly add clouds in our background
             # Each iteration will create a list of x, y coordinates for 1 cloud
             to_append = []
             to_append.append(random.randint(next_cloud_low, next_cloud_high))
-            to_append.append(random.randint(350, 675)) # Fixed y range to maintain in sky
+            to_append.append(random.randint(350, 675)) # Fixed y range to maintain in sky to keep clouds in sky
             cloud_location_list.append(to_append)
             to_append = []
-            next_cloud_low += 225
-            next_cloud_high += 225
+            next_cloud_low += 175
+            next_cloud_high += 175
 
 
         for coordinate in cloud_location_list:
@@ -234,11 +250,14 @@ class gameView(arcade.View):
             self.background_element_list.append(cloud)
 
         #Add all our sprites that correspond to game elements
-        """
+       
         #Add our sign
-        self.sign = arcade.load_texture("./resources/game elements/sign.png")
-        arcade.draw_lrwh_rectangle_textured(500, 250, 300, 200, self.sign)
-        """
+        sign = arcade.Sprite("./resources/game elements/sign.png", 0.35)
+        sign.center_x = 1100
+        sign.center_y = 91
+        self.game_element_list.append(sign)
+        
+        
         #Create our physics engine
         self.physics_engine = arcade.PhysicsEnginePlatformer(self.player_sprite, self.wall_list, GRAVITY)
 
@@ -270,6 +289,16 @@ class gameView(arcade.View):
         elif key == arcade.key.RIGHT or key == arcade.key.D:
             self.player_sprite.change_x = PLAYER_MOVEMENT_SPEED
 
+        #Default interaction keybind
+        elif key == arcade.key.E:
+            if self.inInteractRange_Sign:
+                #Reset our player movement so that he is not moving when we switch back from the sign view
+                self.player_sprite.change_x = 0
+                self.player_sprite.change_y = 0
+                
+                sign_View = signView(self)
+                self.window.show_view(sign_View)
+
         elif key == arcade.key.ESCAPE:
             pause_view = pauseView(self) 
             self.window.show_view(pause_view)
@@ -289,6 +318,8 @@ class gameView(arcade.View):
 
         # Moving the player with the physics engine
         self.physics_engine.update()
+
+        self.game_element_list.update()
 
         # Manage our scrolling mechanic
         
@@ -330,30 +361,47 @@ class gameView(arcade.View):
 
             #Make our timer follow our player
             #This simply waits for any change in player x/y and then adjusts the location of a timer, keeping a constant distance value
-            self.clock_center_x = (self.player_sprite.center_x - 810)
-            self.clock_center_y = (self.player_sprite.center_y + 520)     
+            self.clock_center_x = (self.player_sprite.center_x - 800)
+            self.clock_center_y = (self.player_sprite.center_y + 500)     
+
+            self.int1_center_x = (self.player_sprite.center_x + 445)
+            self.int1_center_y = (self.player_sprite.center_y + 500)     
 
         #Increment down our total time and up our elapsed time
         self.total_time -= delta_time
         self.elapsed_time += delta_time
+
+        #Detect if the player is near an element he can interact with
+        #here we detect if the player can interact with the sign, and make sure to only allow this if the player is on the ground
+        if self.player_sprite.center_x in range (self.sign_low_x, self.sign_high_x) and self.physics_engine.can_jump():
+            self.intPrompt = "Press E to interact with Sign"
+            self.inInteractRange_Sign = True
+        else:
+            self.intPrompt = ""
+            self.inInteractRange_Sign = False
 
     def on_draw(self):
         # Method to render our screen
         arcade.start_render()
         arcade.set_background_color(arcade.csscolor.DODGER_BLUE)  # CSS color documentation: https://arcade.academy/arcade.csscolor.html
 
-        self.player_list.draw()
         self.wall_list.draw()
         self.fish_list.draw()
         self.background_element_list.draw()
+        self.game_element_list.draw()
+        self.player_list.draw() # We draw our player last so that he is in front of all other elements
 
         clock_minutes = int(self.total_time) // 60
         clock_seconds = int(self.total_time) % 60
 
         # Adding the '02d' in our string formats our int to have a width of 2
-        # This makes automatic padding with 0's if time is in single digit
+        # This adds automatic padding with 0's if time is in single digit
         clock = f'Time: {clock_minutes:02d}:{clock_seconds:02d}' 
         arcade.draw_text(clock, self.clock_center_x, self.clock_center_y, arcade.color.BLACK, 30)
+       
+        #This will draw our interactions that are currently available
+        #on_update() will automatically set intPrompt="" when no interaction available, and so no text will be drawn
+        arcade.draw_text(self.intPrompt, self.int1_center_x, self.int1_center_y, arcade.csscolor.BROWN, 30)
         
         elapsed_minutes = int(self.elapsed_time) // 60
         elapsed_seconds = int(self.elapsed_time) % 60
@@ -368,6 +416,7 @@ class gameView(arcade.View):
             #We will later add a different game over view that is swapped to when the time is elapsed
             time.sleep(0.5)
             sys.exit(0)
+
 
 class pauseView(arcade.View):
     
@@ -387,6 +436,26 @@ class pauseView(arcade.View):
         if key == arcade.key.ESCAPE or key == arcade.key.ENTER:
             self.window.show_view(self.game_view)
 
+#All the different arcade.view classes for our game elements
+class signView(arcade.View):
+    def __init__(self, game_view):
+        super().__init__()
+        self.game_view = game_view
+
+    def on_show(self):
+        arcade.set_viewport(0, SCREEN_WIDTH - 1, 0, SCREEN_HEIGHT - 1) #center our view just to make sure
+    
+    def on_draw(self):
+        arcade.start_render()
+        
+        self.background = arcade.load_texture("./resources/game elements/signView.png")
+        arcade.draw_lrwh_rectangle_textured(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, self.background)
+        
+        arcade.draw_text("Press E to exit", 1400, 650, arcade.csscolor.BROWN, 30)
+
+    def on_key_press(self, key, modifiers):
+        if key == arcade.key.E:
+            self.window.show_view(self.game_view)
 
 def main():
     # Our main method to run our game
