@@ -42,6 +42,8 @@ TOP_VIEWPORT_MARGIN = 620
 
 WORLD_LENGTH = 10000
 
+gameBeaten = False
+
 class startView(arcade.View):
     def __init__(self):
         super().__init__()
@@ -92,13 +94,17 @@ class startView(arcade.View):
     # When this is called, we will call our gameView class to start the game
     def on_key_press(self, key, modifiers): # Default param2 for this is listener is 'symbol' but we use 'key' to make code more readable
         if key == arcade.key.SPACE:
-            self.setup()
-            self.current_song_index = 0
-            self.play_song() 
-            time.sleep(0.75)
-            game_view = gameView()
-            game_view.setup()
-            self.window.show_view(game_view) 
+            if gameBeaten == True:
+                end_view = endView()
+                self.window.show_view(end_view)
+            else:
+                self.setup()
+                self.current_song_index = 0
+                self.play_song() 
+                time.sleep(0.75)
+                game_view = gameView()
+                game_view.setup()
+                self.window.show_view(game_view) 
 
 
 class gameView(arcade.View):
@@ -156,9 +162,14 @@ class gameView(arcade.View):
         #We also create a bool to allow character to interact with objects, only sets to true when in range 
         self.intPrompt = "" #The text to display that corresponds to the object to be interacted with
         
+        # Distance ranges are usually -200 and +200 in x range
         self.inInteractRange_Sign = False #Sign Bool
         self.sign_low_x = 900 #Sign distance range
         self.sign_high_x = 1300
+
+        self.inInteractRange_Dollar = False
+        self.dollar_low_x = 2100
+        self.dollar_high_x = 2500
 
     def play_song(self):
         """ Play the song. """
@@ -188,7 +199,7 @@ class gameView(arcade.View):
         self.game_element_list = arcade.SpriteList(use_spatial_hash=True)
 
         #Setting up our player sprite, and defining its starting coordinates
-        img = "./resources/test_sprite.png"
+        img = "./resources/character/char_idle.png"
         self.player_sprite = arcade.Sprite(img, 1) # Param 2 defines scaling size 
         self.player_sprite.center_x = 64
         self.player_sprite.center_y = 128
@@ -257,6 +268,11 @@ class gameView(arcade.View):
         sign.center_y = 91
         self.game_element_list.append(sign)
         
+        #Add our dollar
+        dollar = arcade.Sprite("./resources/game elements/testdollar.png", 0.07)
+        dollar.center_x = 2300
+        dollar.center_y = 60
+        self.game_element_list.append(dollar)
         
         #Create our physics engine
         self.physics_engine = arcade.PhysicsEnginePlatformer(self.player_sprite, self.wall_list, GRAVITY)
@@ -288,6 +304,7 @@ class gameView(arcade.View):
             self.player_sprite.change_y = -PLAYER_MOVEMENT_SPEED
         elif key == arcade.key.RIGHT or key == arcade.key.D:
             self.player_sprite.change_x = PLAYER_MOVEMENT_SPEED
+            
 
         #Default interaction keybind
         elif key == arcade.key.E:
@@ -376,9 +393,13 @@ class gameView(arcade.View):
         if self.player_sprite.center_x in range (self.sign_low_x, self.sign_high_x) and self.physics_engine.can_jump():
             self.intPrompt = "Press E to interact with Sign"
             self.inInteractRange_Sign = True
+        elif self.player_sprite.center_x in range (self.dollar_low_x, self.dollar_high_x) and self.physics_engine.can_jump():
+            self.intPrompt = "Press E to examine"
+            self.inInteractRange_Dollar =  True
         else:
             self.intPrompt = ""
             self.inInteractRange_Sign = False
+            self.inInteractRange_Dollar = False
 
     def on_draw(self):
         # Method to render our screen
@@ -436,6 +457,20 @@ class pauseView(arcade.View):
         if key == arcade.key.ESCAPE or key == arcade.key.ENTER:
             self.window.show_view(self.game_view)
 
+class endView(arcade.View):
+    
+    def __init__(self):
+        super().__init__()
+
+    def on_show(self):
+        arcade.set_background_color(arcade.csscolor.PINK)
+        arcade.set_viewport(0, SCREEN_WIDTH - 1, 0, SCREEN_HEIGHT - 1)
+
+    def on_draw(self):
+        arcade.start_render()
+        arcade.draw_text("You've done it.", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, arcade.color.WHITE, font_size=60, anchor_x="center")
+
+
 #All the different arcade.view classes for our game elements
 class signView(arcade.View):
     def __init__(self, game_view):
@@ -451,11 +486,13 @@ class signView(arcade.View):
         self.background = arcade.load_texture("./resources/game elements/signView.png")
         arcade.draw_lrwh_rectangle_textured(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, self.background)
         
-        arcade.draw_text("Press E to exit", 1400, 650, arcade.csscolor.BROWN, 30)
+        arcade.draw_text("Press E to exit", 1400, 675, arcade.csscolor.BROWN, 30)
 
     def on_key_press(self, key, modifiers):
         if key == arcade.key.E:
             self.window.show_view(self.game_view)
+
+#class dollarView(arcade.View):
 
 def main():
     # Our main method to run our game
